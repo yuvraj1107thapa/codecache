@@ -35,7 +35,7 @@ interface FormFieldProps {
   label: string;
   name: string;
   value: string;
-  onChange: any; // Keep any to maintain compatibility
+  onChange: (e: { target: { name: string; value: string } }) => void;
   maxWidth?: string;
   component?: typeof Input | typeof Textarea;
   options?: string[];
@@ -43,15 +43,17 @@ interface FormFieldProps {
 }
 
 // Reusable FormField component
-const FormField = ({ label, name, value, onChange, maxWidth, component: Component = Input, options, ref }: FormFieldProps) => {
-  // Handle Select component rendering
+const FormField = ({ label, name, value, onChange, maxWidth, component: Component = Input, options }: FormFieldProps) => {
   if (options) {
     return (
       <div>
         <label htmlFor={name} className="block text-sm font-medium text-muted-foreground/80">
           {label}
         </label>
-        <Select name={name} onValueChange={(value) => onChange({ target: { name, value } })}>
+        <Select 
+          value={value} 
+          onValueChange={(newValue) => onChange({ target: { name, value: newValue } })}
+        >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
           </SelectTrigger>
@@ -69,7 +71,6 @@ const FormField = ({ label, name, value, onChange, maxWidth, component: Componen
     );
   }
 
-  // Handle Input/Textarea rendering
   return (
     <div>
       <label htmlFor={name} className="block text-sm font-medium text-muted-foreground/80">
@@ -81,15 +82,12 @@ const FormField = ({ label, name, value, onChange, maxWidth, component: Componen
         value={value}
         onChange={onChange}
         className={`mt-1 ${maxWidth}`}
-        ref={ref}
       />
     </div>
   );
 };
 
-// Main form component
 export default function AddSnippet() {
-  // Form state management
   const [formData, setFormData] = useState({
     title: "",
     language: "",
@@ -106,36 +104,30 @@ export default function AddSnippet() {
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const codeRef = useRef<HTMLTextAreaElement>(null);
 
-  // Handle input changes
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = useCallback((e: { target: { name: string; value: string } }) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   }, []);
 
-  // Handle select changes
-  const handleSelectChange = useCallback((name: string, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
-  }, []);
-
-  // Form validation
   const validateForm = useCallback(() => {
     const requiredFields = ['title', 'language', 'code', 'category', 'difficulty', 'usage'];
-    for (const field of requiredFields) {
-      if (!formData[field as keyof typeof formData]) {
+    const emptyFields = requiredFields.filter(field => !formData[field as keyof typeof formData]);
+    
+    if (emptyFields.length > 0) {
+      emptyFields.forEach(field => {
         toast.error(`${field.charAt(0).toUpperCase() + field.slice(1)} cannot be empty`);
-        return false;
-      }
+      });
+      return false;
     }
     return true;
   }, [formData]);
 
-  // Form submission handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm() || isSubmitting) return;
 
     setIsSubmitting(true);
-    const tagsArray = formData.tags.split(",").map(tag => tag.trim());
+    const tagsArray = formData.tags.split(",").map(tag => tag.trim()).filter(Boolean);
 
     try {
       const response = await fetch("/api/snippets", {
@@ -144,14 +136,15 @@ export default function AddSnippet() {
         body: JSON.stringify({ ...formData, tags: tagsArray }),
       });
 
-      if (response.ok) {
-        toast.success("Snippet requested for review");
-        setTimeout(() => router.push("/"), 2000);
-      } else {
-        toast.error("Failed to add snippet. Please try again.");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
+
+      toast.success("Snippet requested for review");
+      setTimeout(() => router.push("/"), 2000);
     } catch (error) {
-      toast.error("An error occurred. Please try again.");
+      console.error("Submission error:", error);
+      toast.error("Failed to add snippet. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -172,7 +165,7 @@ export default function AddSnippet() {
           label="Language"
           name="language"
           value={formData.language}
-          onChange={(value) => handleSelectChange("language", value)}
+          onChange={handleInputChange}
           options={languages}
         />
         <FormField
@@ -182,7 +175,6 @@ export default function AddSnippet() {
           onChange={handleInputChange}
           maxWidth="max-w-[40vw]"
           component={Textarea}
-          ref={codeRef}
         />
         <FormField
           label="Description"
@@ -191,7 +183,6 @@ export default function AddSnippet() {
           onChange={handleInputChange}
           maxWidth="max-w-[40vw]"
           component={Textarea}
-          ref={descriptionRef}
         />
         <FormField
           label="Tags (comma-separated)"
@@ -205,21 +196,21 @@ export default function AddSnippet() {
             label="Category"
             name="category"
             value={formData.category}
-            onChange={(value) => handleSelectChange("category", value)}
+            onChange={handleInputChange}
             options={categories}
           />
           <FormField
             label="Difficulty"
             name="difficulty"
             value={formData.difficulty}
-            onChange={(value) => handleSelectChange("difficulty", value)}
+            onChange={handleInputChange}
             options={difficultyLevels}
           />
           <FormField
             label="Usage"
             name="usage"
             value={formData.usage}
-            onChange={(value) => handleSelectChange("usage", value)}
+            onChange={handleInputChange}
             options={usageTypes}
           />
         </div>
